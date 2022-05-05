@@ -1,4 +1,4 @@
-package com.hyecheon.creation;
+package com.hyecheon.creation.ex01;
 
 /**
  * User: hyecheon lee
