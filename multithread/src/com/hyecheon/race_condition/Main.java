@@ -53,16 +53,24 @@ public class Main {
     private static class InventoryCounter {
         private int items = 0;
 
-        public synchronized void increment() {
-            items++;
+        final Object lock = new Object();
+
+        public void increment() {
+            synchronized (this.lock) {
+                items++;
+            }
         }
 
-        public synchronized void decrement() {
-            items--;
+        public void decrement() {
+            synchronized (this.lock) {
+                items--;
+            }
         }
 
-        public synchronized int getItems() {
-            return items;
+        public int getItems() {
+            synchronized (this.lock) {
+                return items;
+            }
         }
     }
 }
