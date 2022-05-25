@@ -2,6 +2,8 @@ package com.hyecheon.annotation_init;
 
 import com.hyecheon.annotation_init.annotations.InitializerClass;
 import com.hyecheon.annotation_init.annotations.InitializerMethod;
+import com.hyecheon.annotation_init.annotations.RetryOperation;
+import com.hyecheon.annotation_init.annotations.ScanPackages;
 
 import java.io.IOException;
 import java.lang.reflect.InvocationTargetException;
@@ -14,6 +16,7 @@ import java.nio.file.Paths;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.List;
+import java.util.Set;
 import java.util.stream.Collectors;
 
 /**
@@ -21,16 +24,20 @@ import java.util.stream.Collectors;
  * Email: rainbow880616@gmail.com
  * Date: 2022/05/24
  */
+@ScanPackages(value = {"com.hyecheon.annotation_init.app",
+        "com.hyecheon.annotation_init.app.config",
+        "com.hyecheon.annotation_init.app.databases", "com.hyecheon.annotation_init.app.http"})
 public class Main {
 
-    public static void main(String[] args) throws URISyntaxException, IOException, ClassNotFoundException, InvocationTargetException, NoSuchMethodException, InstantiationException, IllegalAccessException {
-        initialize("com.hyecheon.annotation_init.app",
-                "com.hyecheon.annotation_init.app.config",
-                "com.hyecheon.annotation_init.app.databases", "com.hyecheon.annotation_init.app.http");
+    public static void main(String[] args) throws Throwable {
+        initialize();
     }
 
-    public static void initialize(String... packageNames) throws URISyntaxException, IOException, ClassNotFoundException, NoSuchMethodException, InvocationTargetException, InstantiationException, IllegalAccessException {
-        final var classes = getAllClasses(packageNames);
+    public static void initialize() throws Throwable {
+        final var scanPackages = Main.class.getAnnotation(ScanPackages.class);
+        if (scanPackages == null || scanPackages.value().length == 0) return;
+
+        final var classes = getAllClasses(scanPackages.value());
 
         for (Class<?> clazz : classes) {
             if (!clazz.isAnnotationPresent(InitializerClass.class)) {
@@ -40,7 +47,32 @@ public class Main {
             final Object instance = clazz.getDeclaredConstructor().newInstance();
 
             for (Method method : methods) {
+                callInitializingMethod(instance, method);
+            }
+        }
+    }
+
+    public static void callInitializingMethod(Object instance, Method method) throws Throwable {
+        final var retryOperation = method.getAnnotation(RetryOperation.class);
+
+        var numberOfRetries = retryOperation == null ? 0 : retryOperation.numberOfRetries();
+
+        while (true) {
+            try {
                 method.invoke(instance);
+                break;
+            } catch (InvocationTargetException e) {
+                final var targetException = e.getTargetException();
+                if (numberOfRetries > 0 && Set.of(retryOperation.retryException()).contains(targetException.getClass())) {
+                    numberOfRetries--;
+
+                    System.out.println("Retrying...");
+                    Thread.sleep(retryOperation.durationBetweenRetriesMs());
+                } else if (retryOperation != null) {
+                    throw new Exception(retryOperation.failureMessage(), targetException);
+                } else {
+                    throw targetException;
+                }
             }
         }
     }
